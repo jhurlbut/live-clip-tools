@@ -1,61 +1,54 @@
 # Live Clip Tools
 
-Two free extensions for **Ableton Live 12** that add super-useful entries to your right-click
-menus in Session View:
+Two extensions for Ableton Live 12 Session View: bulk clip export and 4-bar loop slicing.
 
-### 🎛 Session Clip Export
-Turn your session clips into perfectly-trimmed WAV files, in bulk.
+## ⬇️ Download
 
-- Right-click a **scene name** → **Export Session Clips to WAV** exports *every* audio clip in
-  your set. Or select just a few clips, right-click → **Export Selected Clips to WAV**.
-- A window asks where to save, then whether to normalize the volume.
-- Every clip becomes its own 24-bit WAV, exactly one loop long at your song's tempo, named
-  after the clip (`Bass.wav`, `Bass 2.wav`, …).
-- The **+ Stems** menu entries additionally split each clip into four files — drums, bass,
-  vocals, other — using AI stem separation (needs a one-time extra install, see below).
+**[Get both extension files here → Releases](https://github.com/jhurlbut/live-clip-tools/releases/latest)**
 
-### ✂️ Clip Slicer
-Chop a long clip into ready-to-launch 4-bar loops.
+- `Session-Clip-Export-0.0.1.ablx`
+- `Clip-Slicer-0.0.1.ablx`
 
-- Right-click any audio clip → **Slice into 4-Bar Clips**.
-- The whole recording gets cut into 4-bar pieces starting from the clip's "1", each landing in
-  the empty slots below the original as its own loop-ready clip — named and colored to match.
-- Silence at the end of the recording is detected and skipped automatically.
+## 🚀 Install
 
-Both tools show progress while they work and explain any problem in a popup.
+1. Open Live → **Settings → Extensions**
+2. Turn **Developer Mode off**
+3. Drag both `.ablx` files onto the Extensions page
+4. Restart Live
 
----
+New entries appear in Session View right-click menus.
 
-## How to install (about 2 minutes)
+## ✅ Requirements
 
-**You need:** a Mac running the **Ableton Live 12 beta** that includes Extensions support
-(from Ableton's beta program).
-
-1. **Download the two extension files.** Go to this repo's
-   [**Releases page**](../../releases/latest) and download:
-   - `Session-Clip-Export-0.0.1.ablx`
-   - `Clip-Slicer-0.0.1.ablx`
-
-   (They're also in the [`downloads`](downloads) folder here.)
-
-2. **Open Live**, then open **Settings** (Live menu → Settings, or `Cmd+,`).
-
-3. Click the **Extensions** tab.
-
-4. **Make sure "Developer Mode" is switched OFF** on that page. (If it's on, installed
-   extensions are ignored — this is the #1 reason "nothing shows up".)
-
-5. **Drag both downloaded `.ablx` files onto the Extensions page**, then quit and reopen Live.
-
-That's it. Right-click a clip or a scene name in Session View and you'll see the new entries.
+- macOS
+- Ableton Live 12 beta with Extensions support
+- Optional, for stem separation: [demucs](#-stem-separation-optional)
 
 ---
 
-## Optional: enable AI stem separation
+## 🎛 Session Clip Export
 
-The **+ Stems** export entries use a free AI tool called *demucs*. Without it, exports still
-work — you just won't get stems. To set it up, open the **Terminal** app and paste these three
-lines one at a time (each finishes before you paste the next):
+Right-click a scene name → **Export Session Clips to WAV**, or select clips →
+**Export Selected Clips to WAV**.
+
+- Choose a destination folder and whether to normalize to −1 dBFS
+- Each clip is written as a 24-bit WAV, one loop long at song tempo, named after the clip
+  (duplicates numbered)
+- **+ Stems** entries also split each clip into drums / bass / vocals / other
+
+## ✂️ Clip Slicer
+
+Right-click an audio clip → **Slice into 4-Bar Clips**.
+
+- Cuts the entire recording into 4-bar loops starting at the clip's "1"
+- Slices fill the slots below the original, named and colored to match
+- Trailing silence is detected and excluded
+- *(by reference)* variant creates instant slices that point at the original file instead of
+  rendering new audio
+
+## 🎚 Stem separation (optional)
+
+In Terminal, run:
 
 ```
 brew install pipx
@@ -63,52 +56,32 @@ pipx install demucs
 pipx inject demucs numpy
 ```
 
-The very first stems export downloads the AI model (~80 MB), so it takes a couple of minutes —
-after that it's fast.
+The first stems export downloads the model (~80 MB).
 
-*(No Homebrew? Get it first at [brew.sh](https://brew.sh) — one paste-and-run line.)*
+## 🔧 Troubleshooting
 
----
+- **No menu entries** — Settings → Extensions: Developer Mode must be off. Restart Live.
+- **Clip Slicer reports unsaved warp edits** — click the clip's **Save** button (Clip view),
+  then slice again.
+- **Export failures** — stop playback and retry. Details:
+  `~/Library/Preferences/Ableton/Live [version]/ExtensionHost.txt`
+- MIDI clips are skipped; both tools are audio-only.
 
-## Tips & troubleshooting
+## 🛠 Development
 
-- **The menu entries don't appear** → check Settings → Extensions: Developer Mode must be
-  **off**, both extensions listed. Then restart Live.
-- **Clip Slicer says the clip has unsaved warp edits** → click the little **Save** button in
-  the clip's view (bottom of Live, in the clip's Audio panel). That stores your warping with
-  the audio file so the slices match it exactly. Then slice again.
-- **A popup says some clips failed** → the details are in Live's extension log:
-  `~/Library/Preferences/Ableton/Live [version]/ExtensionHost.txt`. Playing back while
-  exporting can cause this — stop playback and try again.
-- **Where do exports go?** Wherever you choose in the folder window — inside a new subfolder
-  named like `Session Clips 120bpm 2026-07-26`, so repeat exports never overwrite anything.
-- Both tools only affect **audio** clips; MIDI clips are skipped (the export counts them in
-  the log).
+The Extensions SDK is a closed beta and is not included. Copy
+`ableton-extensions-sdk-*.tgz` and `ableton-extensions-cli-*.tgz` from the SDK zip into
+[`vendor/`](vendor), then in either project directory:
 
----
+```
+npm install
+npm start          # build + attach to Live (Developer Mode on, one extension per host)
+npm run package    # produce the .ablx
+```
 
-## For developers
-
-Each extension is a standalone TypeScript project built with the
-**Ableton Live Extensions SDK** (closed beta — its packages are *not* included here):
-
-1. Get the Extensions SDK zip from Ableton's beta program.
-2. Copy `ableton-extensions-sdk-*.tgz` and `ableton-extensions-cli-*.tgz` from the zip into
-   [`vendor/`](vendor).
-3. In `session-clip-export/` or `clip-slicer/`: `npm install`, then `npm start` to build and
-   attach to Live (Settings → Extensions → Developer Mode **on**; one extension per host).
-   `npm run package` produces the distributable `.ablx`.
-
-Technical details for each tool are in their own READMEs:
-[session-clip-export](session-clip-export/README.md) ·
-[clip-slicer](clip-slicer/README.md).
-
-Noteworthy engineering bits inside: rendering session clips via temporary arrangement clips,
-native AIFF decoding (Live's renders are AIFF despite the docs), warp-marker fidelity checks
-against the file's saved `.asd`, and a sandbox-aware fs layer (installed extensions run under
-Node's permission model — file I/O outside the extension's own directories is routed through
-child processes).
+Technical docs: [session-clip-export](session-clip-export/README.md) ·
+[clip-slicer](clip-slicer/README.md)
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+[MIT](LICENSE)
