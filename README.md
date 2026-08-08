@@ -6,8 +6,8 @@ Two extensions for Ableton Live 12 Session View: bulk clip export and 4-bar loop
 
 **[Get both extension files here → Releases](https://github.com/jhurlbut/live-clip-tools/releases/latest)**
 
-- `Session-Clip-Export-0.0.1.ablx`
-- `Clip-Slicer-0.0.1.ablx`
+- `Session-Clip-Export-0.0.2.ablx`
+- `Clip-Slicer-0.0.2.ablx`
 
 ## 🚀 Install
 

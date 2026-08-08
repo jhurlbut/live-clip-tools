@@ -27,7 +27,7 @@ import {
   ClipSlot,
 } from "@ableton-extensions/sdk";
 
-import { copyAnywhere, ensureDir, scratchBase, setTempBase, writeFileAnywhere } from "./fsx.js";
+import { copyAnywhere, ensureDir, readFileAnywhere, scratchBase, setTempBase, writeFileAnywhere } from "./fsx.js";
 import { decodePcm } from "./pcm.js";
 import { encodeWav24, normalize } from "./wav.js";
 
@@ -369,7 +369,8 @@ function describeErr(err: unknown): string {
 
 /** Decode, peak-normalize to -1 dBFS, and write as 24-bit WAV. */
 async function normalizeAndWrite(srcWav: string, dst: string, doNormalize = true) {
-  const raw = await fs.readFile(srcWav);
+  // Live may place the render outside the sandbox's read allowlist.
+  const raw = await readFileAnywhere(srcWav);
   // Live's renders are AIFF (despite the docs saying WAV) — decode PCM
   // WAV/AIFF natively; audio-decode handles anything else.
   let channels: Float32Array[];

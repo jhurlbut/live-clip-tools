@@ -6,6 +6,7 @@
 // through /bin/cp & friends. In dev mode the direct calls just work.
 
 import { execFile } from "node:child_process";
+import * as fss from "node:fs";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -14,14 +15,50 @@ import { promisify } from "node:util";
 const run = promisify(execFile);
 
 let tempBase: string | null = null;
+let resolvedBase: string | null = null;
 
 /** Call once at activate: the extension's sanctioned temp dir (writable in-process). */
 export function setTempBase(dir: string | undefined) {
   tempBase = dir ?? null;
+  resolvedBase = null;
 }
 
+function isWritableDir(dir: string): boolean {
+  try {
+    fss.mkdirSync(dir, { recursive: true });
+    const probe = path.join(dir, `.scx-probe-${process.pid}`);
+    fss.writeFileSync(probe, "");
+    fss.rmSync(probe, { force: true });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * A directory this process can create files in directly. The sandbox's write
+ * allowlist doesn't always cover environment.tempDirectory (and macOS purges
+ * /var/folders temp dirs), so probe candidates until one actually works.
+ */
 export function scratchBase(): string {
-  return tempBase ?? os.tmpdir();
+  if (resolvedBase !== null) return resolvedBase;
+  const candidates = [
+    tempBase,
+    path.join(os.tmpdir(), "Ableton Extensions"),
+    path.join(os.homedir(), "Library", "Application Support", "Ableton", "Extensions Data"),
+    os.tmpdir(),
+  ].filter((d): d is string => typeof d === "string" && d.length > 0);
+  for (const dir of candidates) {
+    if (isWritableDir(dir)) {
+      if (dir !== tempBase) {
+        console.info(`[session-clip-export] using scratch dir ${dir} (temp directory not writable)`);
+      }
+      resolvedBase = dir;
+      return dir;
+    }
+  }
+  resolvedBase = tempBase ?? os.tmpdir();
+  return resolvedBase;
 }
 
 function isRestricted(err: unknown): boolean {
