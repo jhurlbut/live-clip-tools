@@ -349,12 +349,10 @@ function describeErr(err: unknown): string {
 async function alert(context: Ctx, title: string, message: string): Promise<void> {
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><script>
     function send() {
-      const payload = JSON.stringify({ method: "close_and_send", params: ["ok"] });
-      if (window.webkit?.messageHandlers?.live) {
-        window.webkit.messageHandlers.live.postMessage(payload);
-      } else if (window.chrome?.webview) {
-        window.chrome.webview.postMessage(payload);
-      }
+      const m = { method: "close_and_send", params: ["ok"] };
+      if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.live)
+        window.webkit.messageHandlers.live.postMessage(m);
+      else if (window.chrome && window.chrome.webview) window.chrome.webview.postMessage(m);
     }
     document.addEventListener("keydown", (e) => {
       if (e.key === "Enter" || e.key === "Escape") send();
