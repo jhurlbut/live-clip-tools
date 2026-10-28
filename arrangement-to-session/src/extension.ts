@@ -129,10 +129,16 @@ async function consolidate(context: Ctx) {
     return;
   }
 
-  // Append one scene per window below the existing ones, as a single undo step.
-  const sceneBase = song.scenes.length;
-  await context.withinTransaction(() =>
-    Promise.all(Array.from({ length: numWindows }, () => song.createScene(-1))));
+  // Start at the first row from which everything below is empty (row 1 in a
+  // fresh set), reusing those empty scenes; create only the missing ones, as a
+  // single undo step. Scene k then lines up with arrangement bars k·x+1….
+  let sceneBase = song.scenes.length;
+  while (sceneBase > 0 && sceneRowIsEmpty(song, sceneBase - 1)) sceneBase--;
+  const missing = numWindows - (song.scenes.length - sceneBase);
+  if (missing > 0) {
+    await context.withinTransaction(() =>
+      Promise.all(Array.from({ length: missing }, () => song.createScene(-1))));
+  }
   for (let k = 0; k < numWindows; k++) {
     const scene = song.scenes[sceneBase + k];
     if (scene !== undefined) scene.name = `Arr ${barLabel(k, bars)}`;
@@ -207,6 +213,19 @@ async function consolidate(context: Ctx) {
       `Launch them in order to replay the arrangement — or in any order to remix it.`,
     ).catch(() => undefined);
   }
+}
+
+/** Whether no track has a session clip in the given scene row. */
+function sceneRowIsEmpty(song: Ctx["application"]["song"], index: number): boolean {
+  for (const track of song.tracks) {
+    try {
+      const slot = track.clipSlots[index];
+      if (slot !== undefined && slot.clip !== null) return false;
+    } catch {
+      // a track type without usable slots counts as empty
+    }
+  }
+  return true;
 }
 
 /** Peak-scan a rendered window; true when everything stays below SILENCE_DB. */
