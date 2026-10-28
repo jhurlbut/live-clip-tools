@@ -26,10 +26,17 @@ import {
   Track,
 } from "@ableton-extensions/sdk";
 
+import { readFileAnywhere, setTempBase } from "./fsx.js";
+import { decodePcm } from "./pcm.js";
+
 const execFileAsync = promisify(execFile);
+
+/** Rendered windows whose peak stays below this are skipped entirely. */
+const SILENCE_DB = -48;
 
 export function activate(activation: ActivationContext) {
   const context = initialize(activation, "1.0.0");
+  setTempBase(context.environment.tempDirectory);
 
   context.commands.registerCommand("arrangement-to-session.consolidate", () => {
     void consolidate(context).catch(async (err) => {
@@ -133,6 +140,7 @@ async function consolidate(context: Ctx) {
 
   let created = 0;
   let failed = 0;
+  let skippedSilent = 0;
   await context.ui.withinProgressDialog(
     `Consolidating ${numWindows} × ${bars} bars…`,
     { progress: 0 },
@@ -148,6 +156,13 @@ async function consolidate(context: Ctx) {
           if (cell.kind === "audio" && cell.track instanceof AudioTrack) {
             const rendered = await context.resources.renderPreFxAudio(
               cell.track, winStart, winStart + windowBeats);
+            // A long arrangement clip can span quiet stretches: windows that
+            // rendered to silence get no session clip.
+            if (await renderIsSilent(rendered)) {
+              skippedSilent++;
+              console.info(`[arrangement-to-session] "${label}" is silent — skipped`);
+              continue;
+            }
             const imported = await context.resources.importIntoProject(rendered);
             const loopSettings: ClipLoopSettings = {
               looping: true,
@@ -176,20 +191,40 @@ async function consolidate(context: Ctx) {
     },
   );
 
+  const silentNote = skippedSilent > 0 ? `, ${skippedSilent} silent window(s) skipped` : "";
   console.info(
     `[arrangement-to-session] created ${created} clip(s) in ${numWindows} scene(s)` +
-    (failed > 0 ? ` (${failed} failed)` : ""));
+    silentNote + (failed > 0 ? ` (${failed} failed)` : ""));
   if (failed > 0) {
     await alert(context, "Arrangement to Session",
-      `Created ${created} of ${cells.length} clip(s) in ${numWindows} new scene(s). ` +
+      `Created ${created} of ${cells.length} clip(s) in ${numWindows} new scene(s)${silentNote}. ` +
       `${failed} failed — details in the Extension Host log. ` +
       `If Live's transport was playing, stop playback and try again.`,
     ).catch(() => undefined);
   } else {
     await alert(context, "Arrangement to Session",
-      `Created ${numWindows} scene(s) of ${bars} bars (${created} clip(s)). ` +
+      `Created ${numWindows} scene(s) of ${bars} bars (${created} clip(s)${silentNote}). ` +
       `Launch them in order to replay the arrangement — or in any order to remix it.`,
     ).catch(() => undefined);
+  }
+}
+
+/** Peak-scan a rendered window; true when everything stays below SILENCE_DB. */
+async function renderIsSilent(renderedPath: string): Promise<boolean> {
+  try {
+    const pcm = decodePcm(await readFileAnywhere(renderedPath));
+    if (pcm === null) return false; // unknown format — keep the clip
+    const threshold = Math.pow(10, SILENCE_DB / 20);
+    for (const ch of pcm.channels) {
+      for (let i = 0; i < ch.length; i++) {
+        const v = ch[i];
+        if (v !== undefined && Math.abs(v) > threshold) return false;
+      }
+    }
+    return true;
+  } catch (err) {
+    console.error(`[arrangement-to-session] silence check failed: ${describeErr(err)}`);
+    return false; // when in doubt, keep the clip
   }
 }
 
