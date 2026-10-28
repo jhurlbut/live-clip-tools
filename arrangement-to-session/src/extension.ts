@@ -295,8 +295,12 @@ async function askBars(context: Ctx): Promise<number | null> {
   }
   if (process.platform !== "darwin") return lastBars;
 
+  // The SDK has no freeze/flatten or automation API, so arrangement automation
+  // can't be captured — remind the user to print it manually where needed.
   const script =
-    `text returned of (display dialog "Cut the arrangement into scenes every … bars:" ` +
+    `text returned of (display dialog "Cut the arrangement into scenes every … bars:` +
+    `\\n\\nTrack automation (volume, device on/off, sends) is not captured — ` +
+    `freeze + flatten those tracks first." ` +
     `default answer ${JSON.stringify(String(lastBars))} ` +
     `buttons {"Cancel", "OK"} default button "OK" ` +
     `with title "Arrangement to Session")`;
