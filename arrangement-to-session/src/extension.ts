@@ -18,6 +18,7 @@ import { promisify } from "node:util";
 import {
   initialize,
   type ActivationContext,
+  type ArrangementSelection,
   type ClipLoopSettings,
   type NoteDescription,
   AudioTrack,
@@ -38,8 +39,8 @@ export function activate(activation: ActivationContext) {
   const context = initialize(activation, "1.0.0");
   setTempBase(context.environment.tempDirectory);
 
-  context.commands.registerCommand("arrangement-to-session.consolidate", () => {
-    void consolidate(context).catch(async (err) => {
+  const run = (sel?: ArrangementSelection) => {
+    void consolidate(context, sel).catch(async (err) => {
       if (err === undefined || err === null) return; // progress-dialog cancel
       const name = (err as { name?: string })?.name;
       if (name === "AbortError") return;
@@ -47,10 +48,24 @@ export function activate(activation: ActivationContext) {
       await alert(context, "Arrangement to Session",
         `Consolidation failed: ${describeErr(err)}`).catch(() => undefined);
     });
-  });
+  };
+  context.commands.registerCommand("arrangement-to-session.consolidate", () => run());
+  context.commands.registerCommand("arrangement-to-session.consolidate-selection",
+    (arg: unknown) => run(arg as ArrangementSelection));
 
-  void context.ui.registerContextMenuAction(
-    "Scene", "Consolidate Arrangement to Scenes…", "arrangement-to-session.consolidate");
+  context.ui.registerContextMenuAction(
+    "Scene", "Consolidate Arrangement to Scenes…", "arrangement-to-session.consolidate")
+    .then(
+      () => console.info("[arrangement-to-session] activated; Scene menu entry registered"),
+      (err) => console.error(`[arrangement-to-session] menu registration failed: ${String(err)}`),
+    );
+  // Right-click on a time selection in the arrangement → consolidate just that
+  // region (the SDK can't read the loop brace, but selecting the region is the
+  // same gesture).
+  for (const scope of ["AudioTrack.ArrangementSelection", "MidiTrack.ArrangementSelection"] as const) {
+    void context.ui.registerContextMenuAction(
+      scope, "Consolidate Selection to Scenes…", "arrangement-to-session.consolidate-selection");
+  }
 }
 
 type Ctx = ReturnType<typeof initialize<"1.0.0">>;
@@ -63,8 +78,14 @@ interface Cell {
   notes?: NoteDescription[]; // midi only, already window-relative
 }
 
-async function consolidate(context: Ctx) {
+async function consolidate(context: Ctx, sel?: ArrangementSelection) {
   const song = context.application.song;
+
+  if (sel !== undefined && sel.time_selection_end - sel.time_selection_start < 0.25) {
+    await alert(context, "Arrangement to Session",
+      "Select a time range in the arrangement first, then right-click the selection.");
+    return;
+  }
 
   const bars = await askBars(context);
   if (bars === null) {
@@ -72,7 +93,8 @@ async function consolidate(context: Ctx) {
     return;
   }
 
-  const windowBeats = bars * beatsPerBar(context);
+  const bpb = beatsPerBar(context);
+  const windowBeats = bars * bpb;
 
   // Skip group tracks: their children are rendered individually, and rendering
   // the group as well would duplicate the material.
@@ -90,20 +112,27 @@ async function consolidate(context: Ctx) {
       if (!clip.muted) arrangementEnd = Math.max(arrangementEnd, clip.endTime);
     }
   }
-  if (arrangementEnd <= 0) {
+  if (arrangementEnd <= 0 && sel === undefined) {
     await alert(context, "Arrangement to Session",
       "The arrangement is empty — nothing to consolidate.");
     return;
   }
 
-  const numWindows = Math.max(1, Math.ceil(arrangementEnd / windowBeats - 1e-9));
+  // Full arrangement by default; the selected time range when invoked from a
+  // right-click on an arrangement selection. Windows are anchored at the start.
+  const rangeStart = sel?.time_selection_start ?? 0;
+  const rangeEnd = sel?.time_selection_end ?? arrangementEnd;
+  // 1-based bar number of the first window, for scene/clip names.
+  const firstBar = Math.round(rangeStart / bpb) + 1;
+
+  const numWindows = Math.max(1, Math.ceil((rangeEnd - rangeStart) / windowBeats - 1e-9));
 
   // Work out up front which track/window cells actually have content, so the
   // progress bar is honest and silent windows don't produce clips.
   const cells: Cell[] = [];
   for (const track of tracks) {
     for (let k = 0; k < numWindows; k++) {
-      const winStart = k * windowBeats;
+      const winStart = rangeStart + k * windowBeats;
       const winEnd = winStart + windowBeats;
       if (track instanceof AudioTrack) {
         const hasAudio = track.arrangementClips.some((c) =>
@@ -141,7 +170,7 @@ async function consolidate(context: Ctx) {
   }
   for (let k = 0; k < numWindows; k++) {
     const scene = song.scenes[sceneBase + k];
-    if (scene !== undefined) scene.name = `Arr ${barLabel(k, bars)}`;
+    if (scene !== undefined) scene.name = `Arr ${barLabel(firstBar, k, bars)}`;
   }
 
   let created = 0;
@@ -153,8 +182,8 @@ async function consolidate(context: Ctx) {
     async (update, abortSignal) => {
       for (const [i, cell] of cells.entries()) {
         abortSignal.throwIfAborted();
-        const winStart = cell.window * windowBeats;
-        const label = `${cell.track.name} ${barLabel(cell.window, bars)}`;
+        const winStart = rangeStart + cell.window * windowBeats;
+        const label = `${cell.track.name} ${barLabel(firstBar, cell.window, bars)}`;
         await update(`Consolidating "${label}" (${i + 1}/${cells.length})`, (i / cells.length) * 100);
         try {
           const slot = cell.track.clipSlots[sceneBase + cell.window];
@@ -313,10 +342,10 @@ function windowNotes(
   return out;
 }
 
-/** "1–4" for window 0 at 4 bars, "5–8" for window 1, … (1-based bar numbers). */
-function barLabel(window: number, bars: number): string {
-  const first = window * bars + 1;
-  const last = (window + 1) * bars;
+/** "1–4" for window 0 at 4 bars from bar 1, "5–8" for window 1, … (absolute arrangement bars). */
+function barLabel(firstBar: number, window: number, bars: number): string {
+  const first = firstBar + window * bars;
+  const last = first + bars - 1;
   return bars === 1 ? `${first}` : `${first}–${last}`;
 }
 
